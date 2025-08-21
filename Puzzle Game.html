@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌈 Color Cascade - HTML5 Puzzle Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+        .game-container {
+            position: relative;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
+        }
+        canvas {
+            display: block;
+            background: linear-gradient(180deg, #0f0f23, #2d1b69);
+        }
+        .hud {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #fff;
+            font-size: 18px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            z-index: 10;
+        }
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            text-align: center;
+            font-size: 14px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+        }
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: #fff;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            display: none;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="hud">
+            <div>Score: <span id="score">0</span></div>
+            <div>Lines: <span id="lines">0</span></div>
+            <div>Level: <span id="level">1</span></div>
+        </div>
+        
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+        
+        <div class="controls">
+            <div>🎮 A/D to move • W to rotate • S to drop • Click to start music</div>
+        </div>
+
+        <div class="game-over" id="gameOver">
+            <h2>🎉 Game Over!</h2>
+            <p>Final Score: <span id="finalScore">0</span></p>
+            <button onclick="restartGame()">Play Again</button>
+        </div>
+    </div>
+
+    <audio id="bg-music" src="https://www.myinstants.com/media/sounds/super-mini-juegos-2.mp3" loop></audio>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const music = document.getElementById('bg-music');
+
+        // Game constants
+        const BLOCK_SIZE = 30;
+        const GRID_WIDTH = 10;
+        const GRID_HEIGHT = 20;
+        const COLORS = [
+            '#ff0080', '#00ff80', '#8000ff', '#ff8000',
+            '#0080ff', '#ffff00', '#ff4040', '#40ff40'
+        ];
+
+        // Game state
+        let gameRunning = true;
+        let score = 0;
+        let lines = 0;
+        let level = 1;
+        let dropTime = 0;
+        let dropInterval = 1000;
+        let keys = {};
+
+        // Grid and current piece
+        let grid = [];
+        let currentPiece = null;
+        let nextPiece = null;
+        let particles = [];
+
+        // Tetris-like pieces
+        const PIECES = [
+            [[1,1,1,1]], // I-piece
+            [[1,1],[1,1]], // O-piece
+            [[0,1,0],[1,1,1]], // T-piece
+            [[0,1,1],[1,1,0]], // S-piece
+            [[1,1,0],[0,1,1]], // Z-piece
+            [[1,0,0],[1,1,1]], // J-piece
+            [[0,0,1],[1,1,1]] // L-piece
+        ];
+
+        // Initialize grid
+        function initGrid() {
+            grid = [];
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                grid[y] = [];
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    grid[y][x] = 0;
+                }
+            }
+        }
+
+        // Create piece
+        function createPiece() {
+            const pieceIndex = Math.floor(Math.random() * PIECES.length);
+            const colorIndex = Math.floor(Math.random() * COLORS.length);
+            return {
+                shape: PIECES[pieceIndex],
+                x: Math.floor(GRID_WIDTH / 2) - Math.floor(PIECES[pieceIndex].length / 2),
+                y: 0,
+                color: colorIndex + 1
+            };
+        }
+
+        // Check collision
+        function checkCollision(piece, dx = 0, dy = 0, newShape = null) {
+            const shape = newShape || piece.shape;
+            for (let y = 0; y < shape.length; y++) {
+                for (let x = 0; x < shape[y].length; x++) {
+                    if (shape[y][x]) {
+                        const newX = piece.x + x + dx;
+                        const newY = piece.y + y + dy;
+                        if (newX < 0 || newX >= GRID_WIDTH || newY >= GRID_HEIGHT) {
+                            return true;
+                        }
+                        if (newY >= 0 && grid[newY][newX]) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        // Rotate piece
+        function rotatePiece(piece) {
+            const rotated = [];
+            const rows = piece.shape.length;
+            const cols = piece.shape.length;
+            
+            for (let x = 0; x < cols; x++) {
+                rotated[x] = [];
+                for (let y = rows - 1; y >= 0; y--) {
+                    rotated[x][rows - 1 - y] = piece.shape[y][x];
+                }
+            }
+            return rotated;
+        }
+
+        // Place piece on grid
+        function placePiece(piece) {
+            for (let y = 0; y < piece.shape.length; y++) {
+                for (let x = 0; x < piece.shape[y].length; x++) {
+                    if (piece.shape[y][x]) {
+                        const gridX = piece.x + x;
+                        const gridY = piece.y + y;
+                        if (gridY >= 0) {
+                            grid[gridY][gridX] = piece.color;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check for completed lines
+        function checkLines() {
+            let linesCleared = 0;
+            for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
+                if (grid[y].every(cell => cell !== 0)) {
+                    // Create particles for line clear effect
+                    for (let x = 0; x < GRID_WIDTH; x++) {
+                        createParticles(x * BLOCK_SIZE + BLOCK_SIZE/2, y * BLOCK_SIZE + BLOCK_SIZE/2, COLORS[grid[y][x] - 1]);
+                    }
+                    
+                    grid.splice(y, 1);
+                    grid.unshift(new Array(GRID_WIDTH).fill(0));
+                    linesCleared++;
+                    y++; // Check same line again
+                }
+            }
+            
+            if (linesCleared > 0) {
+                lines += linesCleared;
+                score += linesCleared * 100 * level;
+                level = Math.floor(lines / 10) + 1;
+                dropInterval = Math.max(100, 1000 - (level - 1) * 50);
+                
+                document.getElementById('lines').textContent = lines;
+                document.getElementById('level').textContent = level;
+                document.getElementById('score').textContent = score;
+            }
+        }
+
+        // Create particles
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 8; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: Math.random() * -5 - 2,
+                    life: 60,
+                    maxLife: 60,
+                    color: color,
+                    size: Math.random() * 4 + 2
+                });
+            }
+        }
+
+        // Update particles
+        function updateParticles() {
+            particles.forEach((particle, index) => {
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+                particle.vy += 0.2; // gravity
+                particle.life--;
+                
+                if (particle.life <= 0) {
+                    particles.splice(index, 1);
+                }
+            });
+        }
+
+        // Draw functions
+        function drawGrid() {
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y][x]) {
+                        drawBlock(x, y, COLORS[grid[y][x] - 1]);
+                    }
+                }
+            }
+        }
+
+        function drawBlock(x, y, color, alpha = 1) {
+            const pixelX = x * BLOCK_SIZE;
+            const pixelY = y * BLOCK_SIZE;
+            
+            ctx.globalAlpha = alpha;
+            
+            // Main block
+            ctx.fillStyle = color;
+            ctx.fillRect(pixelX, pixelY, BLOCK_SIZE, BLOCK_SIZE);
+            
+            // Glow effect
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 15;
+            ctx.fillRect(pixelX + 2, pixelY + 2, BLOCK_SIZE - 4, BLOCK_SIZE - 4);
+            ctx.shadowBlur = 0;
+            
+            // Inner highlight
+            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+            ctx.fillRect(pixelX + 2, pixelY + 2, BLOCK_SIZE - 4, 4);
+            
+            // Border
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(pixelX + 0.5, pixelY + 0.5, BLOCK_SIZE - 1, BLOCK_SIZE - 1);
+            
+            ctx.globalAlpha = 1;
+        }
+
+        function drawPiece(piece, alpha = 1) {
+            for (let y = 0; y < piece.shape.length; y++) {
+                for (let x = 0; x < piece.shape[y].length; x++) {
+                    if (piece.shape[y][x]) {
+                        drawBlock(piece.x + x, piece.y + y, COLORS[piece.color - 1], alpha);
+                    }
+                }
+            }
+        }
+
+        function drawGhost(piece) {
+            let ghostY = piece.y;
+            while (!checkCollision({...piece, y: ghostY + 1})) {
+                ghostY++;
+            }
+            drawPiece({...piece, y: ghostY}, 0.3);
+        }
+
+        function drawParticles() {
+            particles.forEach(particle => {
+                const alpha = particle.life / particle.maxLife;
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = particle.color;
+                ctx.fillRect(particle.x - particle.size/2, particle.y - particle.size/2, particle.size, particle.size);
+                ctx.globalAlpha = 1;
+            });
+        }
+
+        function drawBackground() {
+            // Animated background pattern
+            const time = Date.now() * 0.001;
+            for (let i = 0; i < 20; i++) {
+                const x = Math.sin(time + i) * 50 + canvas.width / 2;
+                const y = (time * 30 + i * 50) % canvas.height;
+                const alpha = Math.sin(time + i) * 0.1 + 0.1;
+                
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = COLORS[i % COLORS.length];
+                ctx.fillRect(x - 2, y - 2, 4, 4);
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // Game loop
+        function gameLoop(currentTime) {
+            if (!gameRunning) return;
+            
+            // Update drop time
+            if (currentTime - dropTime > dropInterval) {
+                if (currentPiece && !checkCollision(currentPiece, 0, 1)) {
+                    currentPiece.y++;
+                } else if (currentPiece) {
+                    placePiece(currentPiece);
+                    checkLines();
+                    currentPiece = nextPiece || createPiece();
+                    nextPiece = createPiece();
+                    
+                    // Check game over
+                    if (checkCollision(currentPiece)) {
+                        gameRunning = false;
+                        document.getElementById('finalScore').textContent = score;
+                        document.getElementById('gameOver').style.display = 'block';
+                        return;
+                    }
+                }
+                dropTime = currentTime;
+            }
+            
+            // Create first piece
+            if (!currentPiece) {
+                currentPiece = createPiece();
+                nextPiece = createPiece();
+            }
+            
+            updateParticles();
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            drawBackground();
+            drawGrid();
+            
+            if (currentPiece) {
+                drawGhost(currentPiece);
+                drawPiece(currentPiece);
+            }
+            
+            drawParticles();
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Input handling
+        document.addEventListener('keydown', (e) => {
+            if (!gameRunning || !currentPiece) return;
+            
+            switch(e.key.toLowerCase()) {
+                case 'a':
+                    if (!checkCollision(currentPiece, -1, 0)) {
+                        currentPiece.x--;
+                    }
+                    break;
+                case 'd':
+                    if (!checkCollision(currentPiece, 1, 0)) {
+                        currentPiece.x++;
+                    }
+                    break;
+                case 's':
+                    if (!checkCollision(currentPiece, 0, 1)) {
+                        currentPiece.y++;
+                        score += 1;
+                        document.getElementById('score').textContent = score;
+                    }
+                    break;
+                case 'w':
+                    const rotated = rotatePiece(currentPiece);
+                    if (!checkCollision(currentPiece, 0, 0, rotated)) {
+                        currentPiece.shape = rotated;
+                    }
+                    break;
+            }
+        });
+
+        // Restart game
+        function restartGame() {
+            gameRunning = true;
+            score = 0;
+            lines = 0;
+            level = 1;
+            dropInterval = 1000;
+            currentPiece = null;
+            nextPiece = null;
+            particles = [];
+            
+            document.getElementById('score').textContent = score;
+            document.getElementById('lines').textContent = lines;
+            document.getElementById('level').textContent = level;
+            document.getElementById('gameOver').style.display = 'none';
+            
+            initGrid();
+            gameLoop(0);
+        }
+
+        // Music control
+        document.body.addEventListener('click', () => {
+            if (music.paused) {
+                music.play();
+            }
+        });
+
+        // Initialize game
+        initGrid();
+        gameLoop(0);
+    </script>
+</body>
+</html>
