@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⏰ Neon Timing - HTML5 Precision Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: radial-gradient(ellipse at center, #1a0033, #000011, #000000);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            animation: pulseBackground 4s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulseBackground {
+            0% { background: radial-gradient(ellipse at center, #1a0033, #000011, #000000); }
+            100% { background: radial-gradient(ellipse at center, #33001a, #110000, #000000); }
+        }
+        
+        .game-container {
+            position: relative;
+            border: 4px solid #ff00aa;
+            border-radius: 20px;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(15px);
+            box-shadow: 
+                0 0 40px #ff00aa,
+                inset 0 0 30px rgba(255, 0, 170, 0.1);
+            animation: borderPulse 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes borderPulse {
+            0% { box-shadow: 0 0 40px #ff00aa, inset 0 0 30px rgba(255, 0, 170, 0.1); }
+            100% { box-shadow: 0 0 60px #00ffaa, inset 0 0 30px rgba(0, 255, 170, 0.1); border-color: #00ffaa; }
+        }
+        
+        canvas {
+            display: block;
+            background: radial-gradient(circle at center, #0a0a0a, #050505);
+            border-radius: 16px;
+            cursor: pointer;
+        }
+        
+        .hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #00ffff;
+            font-size: 18px;
+            text-shadow: 0 0 10px #00ffff;
+            z-index: 10;
+        }
+        
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            text-align: center;
+            font-size: 14px;
+            text-shadow: 0 0 8px #fff;
+        }
+        
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.95);
+            color: #ff00aa;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            border: 3px solid #ff00aa;
+            box-shadow: 0 0 40px #ff00aa;
+            display: none;
+            z-index: 100;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #ff00aa, #00ffaa);
+            border: none;
+            color: #000;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 25px;
+            cursor: pointer;
+            margin: 10px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+        }
+        
+        button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 20px #ff00aa;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="hud">
+            <div>Score: <span id="score">0</span></div>
+            <div>Level: <span id="level">1</span></div>
+            <div>Streak: <span id="streak">0</span></div>
+            <div>Lives: <span id="lives">3</span></div>
+        </div>
+        
+        <canvas id="gameCanvas" width="500" height="500"></canvas>
+        
+        <div class="instructions">
+            <div>🎯 Click when the moving dot hits the target zone!</div>
+            <div>⚡ Perfect timing = bonus points • Miss = lose a life</div>
+        </div>
+
+        <div class="game-over" id="gameOver">
+            <h2>💀 GAME OVER!</h2>
+            <p>Final Score: <span id="finalScore">0</span></p>
+            <p>Best Streak: <span id="bestStreak">0</span></p>
+            <button onclick="restartGame()">PLAY AGAIN</button>
+        </div>
+    </div>
+
+    <audio id="bg-music" src="https://www.myinstants.com/media/sounds/super-mini-juegos-2.mp3" loop></audio>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const music = document.getElementById('bg-music');
+
+        // Game state
+        let gameRunning = true;
+        let score = 0;
+        let level = 1;
+        let streak = 0;
+        let bestStreak = 0;
+        let lives = 3;
+        let currentAngle = 0;
+        let targetAngle = 0;
+        let targetRange = Math.PI / 6; // 30 degrees
+        let rotationSpeed = 0.02;
+        let particles = [];
+        let pulseEffects = [];
+
+        // Game objects
+        const center = {
+            x: canvas.width / 2,
+            y: canvas.height / 2
+        };
+        const radius = 150;
+        const dotRadius = 12;
+
+        // Initialize new round
+        function newRound() {
+            targetAngle = Math.random() * Math.PI * 2;
+            currentAngle = Math.random() * Math.PI * 2;
+            rotationSpeed = 0.015 + (level - 1) * 0.005;
+            targetRange = Math.max(Math.PI / 8, Math.PI / 6 - (level - 1) * 0.02);
+        }
+
+        // Create particles
+        function createParticles(x, y, color, count = 15) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 80,
+                    maxLife: 80,
+                    color: color,
+                    size: Math.random() * 6 + 2
+                });
+            }
+        }
+
+        // Create pulse effect
+        function createPulse(x, y, color, size = 50) {
+            pulseEffects.push({
+                x: x,
+                y: y,
+                size: 0,
+                maxSize: size,
+                life: 40,
+                maxLife: 40,
+                color: color
+            });
+        }
+
+        // Update particles
+        function updateParticles() {
+            particles.forEach((particle, index) => {
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+                particle.vx *= 0.98;
+                particle.vy *= 0.98;
+                particle.life--;
+                
+                if (particle.life <= 0) {
+                    particles.splice(index, 1);
+                }
+            });
+        }
+
+        // Update pulse effects
+        function updatePulses() {
+            pulseEffects.forEach((pulse, index) => {
+                pulse.size = (pulse.maxSize * (pulse.maxLife - pulse.life)) / pulse.maxLife;
+                pulse.life--;
+                
+                if (pulse.life <= 0) {
+                    pulseEffects.splice(index, 1);
+                }
+            });
+        }
+
+        // Check if angle is in target range
+        function isInTargetRange(angle) {
+            let diff = Math.abs(angle - targetAngle);
+            if (diff > Math.PI) {
+                diff = Math.PI * 2 - diff;
+            }
+            return diff <= targetRange;
+        }
+
+        // Handle click
+        function handleClick() {
+            if (!gameRunning) return;
+
+            const dotX = center.x + Math.cos(currentAngle) * radius;
+            const dotY = center.y + Math.sin(currentAngle) * radius;
+
+            if (isInTargetRange(currentAngle)) {
+                // Perfect hit!
+                let points = 100;
+                let diff = Math.abs(currentAngle - targetAngle);
+                if (diff > Math.PI) diff = Math.PI * 2 - diff;
+                
+                if (diff <= targetRange / 3) {
+                    points = 300; // Perfect center
+                    createParticles(dotX, dotY, '#ffff00', 20);
+                    createPulse(dotX, dotY, '#ffff00', 80);
+                } else if (diff <= targetRange * 2/3) {
+                    points = 200; // Great hit
+                    createParticles(dotX, dotY, '#00ff00', 15);
+                    createPulse(dotX, dotY, '#00ff00', 60);
+                } else {
+                    points = 100; // Good hit
+                    createParticles(dotX, dotY, '#00ffff', 10);
+                    createPulse(dotX, dotY, '#00ffff', 40);
+                }
+
+                score += points * level;
+                streak++;
+                bestStreak = Math.max(bestStreak, streak);
+
+                // Level up every 5 successful hits
+                if (streak % 5 === 0) {
+                    level++;
+                    createParticles(center.x, center.y, '#ff00ff', 30);
+                }
+
+                updateHUD();
+                newRound();
+            } else {
+                // Miss!
+                lives--;
+                streak = 0;
+                createParticles(dotX, dotY, '#ff0000', 12);
+                createPulse(dotX, dotY, '#ff0000', 60);
+
+                if (lives <= 0) {
+                    gameRunning = false;
+                    document.getElementById('finalScore').textContent = score;
+                    document.getElementById('bestStreak').textContent = bestStreak;
+                    document.getElementById('gameOver').style.display = 'block';
+                } else {
+                    updateHUD();
+                    newRound();
+                }
+            }
+        }
+
+        // Update HUD
+        function updateHUD() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('level').textContent = level;
+            document.getElementById('streak').textContent = streak;
+            document.getElementById('lives').textContent = lives;
+        }
+
+        // Draw functions
+        function drawBackground() {
+            // Animated background rings
+            const time = Date.now() * 0.001;
+            
+            for (let i = 0; i < 5; i++) {
+                const ringRadius = 50 + i * 40;
+                const alpha = Math.sin(time + i) * 0.1 + 0.1;
+                
+                ctx.strokeStyle = `hsla(${(time * 50 + i * 60) % 360}, 70%, 50%, ${alpha})`;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(center.x, center.y, ringRadius, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
+
+        function drawMainCircle() {
+            // Outer ring
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 8;
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Inner track
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        function drawTargetZone() {
+            const startAngle = targetAngle - targetRange;
+            const endAngle = targetAngle + targetRange;
+
+            // Target zone arc
+            ctx.strokeStyle = '#ff00aa';
+            ctx.lineWidth = 12;
+            ctx.shadowColor = '#ff00aa';
+            ctx.shadowBlur = 20;
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, radius, startAngle, endAngle);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Perfect center marker
+            const perfectX = center.x + Math.cos(targetAngle) * radius;
+            const perfectY = center.y + Math.sin(targetAngle) * radius;
+            
+            ctx.fillStyle = '#ffff00';
+            ctx.shadowColor = '#ffff00';
+            ctx.shadowBlur = 15;
+            ctx.beginPath();
+            ctx.arc(perfectX, perfectY, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        function drawMovingDot() {
+            const x = center.x + Math.cos(currentAngle) * radius;
+            const y = center.y + Math.sin(currentAngle) * radius;
+
+            // Glow effect
+            ctx.fillStyle = 'rgba(0,255,255,0.3)';
+            ctx.beginPath();
+            ctx.arc(x, y, dotRadius * 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Main dot
+            ctx.fillStyle = '#00ffff';
+            ctx.shadowColor = '#00ffff';
+            ctx.shadowBlur = 20;
+            ctx.beginPath();
+            ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Inner highlight
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(x, y, dotRadius / 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawParticles() {
+            particles.forEach(particle => {
+                const alpha = particle.life / particle.maxLife;
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = particle.color;
+                ctx.fillRect(
+                    particle.x - particle.size/2, 
+                    particle.y - particle.size/2, 
+                    particle.size, 
+                    particle.size
+                );
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        function drawPulses() {
+            pulseEffects.forEach(pulse => {
+                const alpha = pulse.life / pulse.maxLife;
+                ctx.globalAlpha = alpha * 0.5;
+                ctx.strokeStyle = pulse.color;
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.arc(pulse.x, pulse.y, pulse.size, 0, Math.PI * 2);
+                ctx.stroke();
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        // Game loop
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            // Update rotation
+            currentAngle += rotationSpeed;
+            if (currentAngle > Math.PI * 2) {
+                currentAngle -= Math.PI * 2;
+            }
+
+            updateParticles();
+            updatePulses();
+
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawBackground();
+            drawMainCircle();
+            drawTargetZone();
+            drawMovingDot();
+            drawParticles();
+            drawPulses();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Restart game
+        function restartGame() {
+            gameRunning = true;
+            score = 0;
+            level = 1;
+            streak = 0;
+            lives = 3;
+            particles = [];
+            pulseEffects = [];
+            
+            document.getElementById('gameOver').style.display = 'none';
+            updateHUD();
+            newRound();
+            gameLoop();
+        }
+
+        // Event listeners
+        canvas.addEventListener('click', handleClick);
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                handleClick();
+            }
+        });
+
+        // Music control
+        document.body.addEventListener('click', () => {
+            if (music.paused) {
+                music.play();
+            }
+        });
+
+        // Initialize game
+        updateHUD();
+        newRound();
+        gameLoop();
+    </script>
+</body>
+</html>
