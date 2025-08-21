@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>💎 Neon Collector - HTML5 Action Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(45deg, #0a0a2e, #16213e, #0f3460, #533a7d);
+            background-size: 400% 400%;
+            animation: gradientWave 6s ease infinite;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Consolas', monospace;
+            overflow: hidden;
+        }
+
+        @keyframes gradientWave {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        
+        .game-container {
+            position: relative;
+            border: 4px solid #00ff88;
+            border-radius: 25px;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(20px);
+            box-shadow: 
+                0 0 50px #00ff88,
+                inset 0 0 30px rgba(0, 255, 136, 0.1);
+            animation: containerGlow 3s ease-in-out infinite alternate;
+        }
+
+        @keyframes containerGlow {
+            0% { box-shadow: 0 0 50px #00ff88, inset 0 0 30px rgba(0, 255, 136, 0.1); }
+            100% { box-shadow: 0 0 70px #ff0088, inset 0 0 30px rgba(255, 0, 136, 0.1); border-color: #ff0088; }
+        }
+        
+        canvas {
+            display: block;
+            background: radial-gradient(ellipse at center, #1a1a3a, #0a0a1a);
+            border-radius: 20px;
+        }
+        
+        .hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #00ffff;
+            font-size: 18px;
+            text-shadow: 0 0 10px #00ffff;
+            z-index: 10;
+        }
+        
+        .timer {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #ffff00;
+            font-size: 24px;
+            text-shadow: 0 0 15px #ffff00;
+            z-index: 10;
+        }
+        
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            text-align: center;
+            font-size: 14px;
+            text-shadow: 0 0 8px #fff;
+        }
+        
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.95);
+            color: #00ff88;
+            padding: 40px;
+            border-radius: 25px;
+            text-align: center;
+            border: 3px solid #00ff88;
+            box-shadow: 0 0 50px #00ff88;
+            display: none;
+            z-index: 100;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #00ff88, #ff0088);
+            border: none;
+            color: #000;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 25px;
+            cursor: pointer;
+            margin: 10px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+        }
+        
+        button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 25px #00ff88;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="hud">
+            <div>Score: <span id="score">0</span></div>
+            <div>Collected: <span id="collected">0</span></div>
+            <div>Lives: <span id="lives">3</span></div>
+            <div>Level: <span id="level">1</span></div>
+        </div>
+        
+        <div class="timer">
+            Time: <span id="time">60</span>s
+        </div>
+        
+        <canvas id="gameCanvas" width="700" height="500"></canvas>
+        
+        <div class="controls">
+            <div>🎮 WASD or Arrow Keys to move • Collect glowing squares • Avoid red enemies</div>
+        </div>
+
+        <div class="game-over" id="gameOver">
+            <h2 id="gameOverTitle">⏰ TIME'S UP!</h2>
+            <p>Final Score: <span id="finalScore">0</span></p>
+            <p>Items Collected: <span id="finalCollected">0</span></p>
+            <button onclick="restartGame()">PLAY AGAIN</button>
+        </div>
+    </div>
+
+    <audio id="bg-music" src="https://www.myinstants.com/media/sounds/super-mini-juegos-2.mp3" loop></audio>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const music = document.getElementById('bg-music');
+
+        // Game state
+        let gameRunning = true;
+        let score = 0;
+        let collected = 0;
+        let lives = 3;
+        let level = 1;
+        let timeLeft = 60;
+        let gameTimer = null;
+
+        // Player object
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            size: 20,
+            speed: 4,
+            color: '#00ffff',
+            trail: []
+        };
+
+        // Game objects arrays
+        let collectibles = [];
+        let enemies = [];
+        let powerups = [];
+        let particles = [];
+        let keys = {};
+
+        // Initialize game timer
+        function startTimer() {
+            gameTimer = setInterval(() => {
+                timeLeft--;
+                document.getElementById('time').textContent = timeLeft;
+                
+                if (timeLeft <= 0) {
+                    endGame('time');
+                }
+            }, 1000);
+        }
+
+        // Create collectible square[4]
+        function createCollectible() {
+            collectibles.push({
+                x: Math.random() * (canvas.width - 30) + 15,
+                y: Math.random() * (canvas.height - 30) + 15,
+                size: 15,
+                color: `hsl(${Math.random() * 360}, 80%, 60%)`,
+                rotation: 0,
+                pulseScale: 1,
+                points: 10
+            });
+        }
+
+        // Create enemy
+        function createEnemy() {
+            enemies.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: 18,
+                speed: 1 + level * 0.3,
+                color: '#ff0040',
+                angle: Math.random() * Math.PI * 2,
+                rotationSpeed: 0.1
+            });
+        }
+
+        // Create power-up
+        function createPowerup() {
+            const types = ['speed', 'points', 'time', 'shield'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            
+            powerups.push({
+                x: Math.random() * (canvas.width - 40) + 20,
+                y: Math.random() * (canvas.height - 40) + 20,
+                size: 25,
+                type: type,
+                color: type === 'speed' ? '#ffff00' : 
+                       type === 'points' ? '#ff8800' :
+                       type === 'time' ? '#8800ff' : '#00ff00',
+                rotation: 0,
+                pulseScale: 1,
+                duration: 300 // frames
+            });
+        }
+
+        // Create particles
+        function createParticles(x, y, color, count = 12) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    life: 60,
+                    maxLife: 60,
+                    color: color,
+                    size: Math.random() * 4 + 2
+                });
+            }
+        }
+
+        // Update player
+        function updatePlayer() {
+            let newX = player.x;
+            let newY = player.y;
+            
+            if (keys['w'] || keys['W'] || keys['ArrowUp']) newY -= player.speed;
+            if (keys['s'] || keys['S'] || keys['ArrowDown']) newY += player.speed;
+            if (keys['a'] || keys['A'] || keys['ArrowLeft']) newX -= player.speed;
+            if (keys['d'] || keys['D'] || keys['ArrowRight']) newX += player.speed;
+            
+            // Keep player in bounds
+            newX = Math.max(player.size/2, Math.min(canvas.width - player.size/2, newX));
+            newY = Math.max(player.size/2, Math.min(canvas.height - player.size/2, newY));
+            
+            player.x = newX;
+            player.y = newY;
+            
+            // Add trail effect
+            player.trail.push({x: player.x, y: player.y, life: 15});
+            if (player.trail.length > 8) player.trail.shift();
+            player.trail.forEach(point => point.life--);
+            player.trail = player.trail.filter(point => point.life > 0);
+        }
+
+        // Update collectibles
+        function updateCollectibles() {
+            collectibles.forEach((collectible, index) => {
+                collectible.rotation += 0.05;
+                collectible.pulseScale = 1 + Math.sin(Date.now() * 0.01 + index) * 0.2;
+                
+                // Check collision with player[4]
+                const dx = player.x - collectible.x;
+                const dy = player.y - collectible.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < player.size/2 + collectible.size/2) {
+                    score += collectible.points * level;
+                    collected++;
+                    createParticles(collectible.x, collectible.y, collectible.color, 15);
+                    collectibles.splice(index, 1);
+                    
+                    // Level up every 10 collected items
+                    if (collected % 10 === 0) {
+                        level++;
+                        timeLeft += 15; // Bonus time
+                        createParticles(player.x, player.y, '#ffffff', 20);
+                    }
+                }
+            });
+        }
+
+        // Update enemies
+        function updateEnemies() {
+            enemies.forEach((enemy, index) => {
+                // Move towards player
+                const dx = player.x - enemy.x;
+                const dy = player.y - enemy.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance > 0) {
+                    enemy.x += (dx / distance) * enemy.speed;
+                    enemy.y += (dy / distance) * enemy.speed;
+                }
+                
+                enemy.angle += enemy.rotationSpeed;
+                
+                // Check collision with player
+                if (distance < player.size/2 + enemy.size/2) {
+                    lives--;
+                    createParticles(player.x, player.y, '#ff0000', 20);
+                    enemies.splice(index, 1);
+                    
+                    if (lives <= 0) {
+                        endGame('death');
+                    }
+                    
+                    // Knockback effect
+                    player.x += (dx / distance) * -30;
+                    player.y += (dy / distance) * -30;
+                }
+            });
+        }
+
+        // Update power-ups
+        function updatePowerups() {
+            powerups.forEach((powerup, index) => {
+                powerup.rotation += 0.1;
+                powerup.pulseScale = 1 + Math.sin(Date.now() * 0.015 + index) * 0.3;
+                powerup.duration--;
+                
+                if (powerup.duration <= 0) {
+                    powerups.splice(index, 1);
+                    return;
+                }
+                
+                // Check collision with player
+                const dx = player.x - powerup.x;
+                const dy = player.y - powerup.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < player.size/2 + powerup.size/2) {
+                    createParticles(powerup.x, powerup.y, powerup.color, 18);
+                    
+                    switch(powerup.type) {
+                        case 'speed':
+                            player.speed = Math.min(8, player.speed + 1);
+                            break;
+                        case 'points':
+                            score += 100 * level;
+                            break;
+                        case 'time':
+                            timeLeft += 20;
+                            break;
+                        case 'shield':
+                            lives = Math.min(5, lives + 1);
+                            break;
+                    }
+                    
+                    powerups.splice(index, 1);
+                }
+            });
+        }
+
+        // Update particles
+        function updateParticles() {
+            particles.forEach((particle, index) => {
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+                particle.vx *= 0.98;
+                particle.vy *= 0.98;
+                particle.life--;
+                
+                if (particle.life <= 0) {
+                    particles.splice(index, 1);
+                }
+            });
+        }
+
+        // Draw functions
+        function drawBackground() {
+            // Animated grid
+            ctx.strokeStyle = 'rgba(0,255,136,0.1)';
+            ctx.lineWidth = 1;
+            
+            const gridSize = 50;
+            const offset = (Date.now() * 0.05) % gridSize;
+            
+            for (let x = -offset; x < canvas.width + gridSize; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            
+            for (let y = -offset; y < canvas.height + gridSize; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+
+        function drawPlayer() {
+            // Draw trail
+            player.trail.forEach((point, index) => {
+                const alpha = (point.life / 15) * 0.6;
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = player.color;
+                ctx.fillRect(point.x - 3, point.y - 3, 6, 6);
+            });
+            ctx.globalAlpha = 1;
+            
+            // Main player
+            ctx.fillStyle = player.color;
+            ctx.shadowColor = player.color;
+            ctx.shadowBlur = 20;
+            ctx.fillRect(
+                player.x - player.size/2, 
+                player.y - player.size/2, 
+                player.size, 
+                player.size
+            );
+            ctx.shadowBlur = 0;
+            
+            // Inner highlight
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(
+                player.x - player.size/4, 
+                player.y - player.size/4, 
+                player.size/2, 
+                player.size/2
+            );
+        }
+
+        function drawCollectibles() {
+            collectibles.forEach(collectible => {
+                ctx.save();
+                ctx.translate(collectible.x, collectible.y);
+                ctx.rotate(collectible.rotation);
+                ctx.scale(collectible.pulseScale, collectible.pulseScale);
+                
+                ctx.fillStyle = collectible.color;
+                ctx.shadowColor = collectible.color;
+                ctx.shadowBlur = 15;
+                ctx.fillRect(-collectible.size/2, -collectible.size/2, collectible.size, collectible.size);
+                ctx.shadowBlur = 0;
+                
+                // Inner glow
+                ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                ctx.fillRect(-collectible.size/4, -collectible.size/4, collectible.size/2, collectible.size/2);
+                
+                ctx.restore();
+            });
+        }
+
+        function drawEnemies() {
+            enemies.forEach(enemy => {
+                ctx.save();
+                ctx.translate(enemy.x, enemy.y);
+                ctx.rotate(enemy.angle);
+                
+                ctx.fillStyle = enemy.color;
+                ctx.shadowColor = enemy.color;
+                ctx.shadowBlur = 18;
+                ctx.fillRect(-enemy.size/2, -enemy.size/2, enemy.size, enemy.size);
+                ctx.shadowBlur = 0;
+                
+                // Danger spikes
+                ctx.fillStyle = '#ffff00';
+                ctx.fillRect(-2, -enemy.size/2 - 4, 4, 4);
+                ctx.fillRect(-2, enemy.size/2, 4, 4);
+                ctx.fillRect(-enemy.size/2 - 4, -2, 4, 4);
+                ctx.fillRect(enemy.size/2, -2, 4, 4);
+                
+                ctx.restore();
+            });
+        }
+
+        function drawPowerups() {
+            powerups.forEach(powerup => {
+                ctx.save();
+                ctx.translate(powerup.x, powerup.y);
+                ctx.rotate(powerup.rotation);
+                ctx.scale(powerup.pulseScale, powerup.pulseScale);
+                
+                ctx.fillStyle = powerup.color;
+                ctx.shadowColor = powerup.color;
+                ctx.shadowBlur = 25;
+                ctx.fillRect(-powerup.size/2, -powerup.size/2, powerup.size, powerup.size);
+                ctx.shadowBlur = 0;
+                
+                // Type indicator
+                ctx.fillStyle = '#000';
+                ctx.font = '12px Consolas';
+                ctx.textAlign = 'center';
+                const symbol = powerup.type === 'speed' ? 'S' :
+                              powerup.type === 'points' ? 'P' :
+                              powerup.type === 'time' ? 'T' : 'H';
+                ctx.fillText(symbol, 0, 4);
+                
+                ctx.restore();
+            });
+        }
+
+        function drawParticles() {
+            particles.forEach(particle => {
+                const alpha = particle.life / particle.maxLife;
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = particle.color;
+                ctx.fillRect(
+                    particle.x - particle.size/2, 
+                    particle.y - particle.size/2, 
+                    particle.size, 
+                    particle.size
+                );
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        // Game loop
+        function gameLoop() {
+            if (!gameRunning) return;
+            
+            // Spawn objects
+            if (Math.random() < 0.02) createCollectible();
+            if (Math.random() < 0.008 + level * 0.002) createEnemy();
+            if (Math.random() < 0.003) createPowerup();
+            
+            // Update everything
+            updatePlayer();
+            updateCollectibles();
+            updateEnemies();
+            updatePowerups();
+            updateParticles();
+            
+            // Update HUD
+            document.getElementById('score').textContent = score;
+            document.getElementById('collected').textContent = collected;
+            document.getElementById('lives').textContent = lives;
+            document.getElementById('level').textContent = level;
+            
+            // Draw everything
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBackground();
+            drawPlayer();
+            drawCollectibles();
+            drawEnemies();
+            drawPowerups();
+            drawParticles();
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        // End game
+        function endGame(reason) {
+            gameRunning = false;
+            if (gameTimer) clearInterval(gameTimer);
+            
+            const title = reason === 'time' ? '⏰ TIME\'S UP!' : '💀 GAME OVER!';
+            document.getElementById('gameOverTitle').textContent = title;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('finalCollected').textContent = collected;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        // Restart game
+        function restartGame() {
+            gameRunning = true;
+            score = 0;
+            collected = 0;
+            lives = 3;
+            level = 1;
+            timeLeft = 60;
+            
+            player.x = canvas.width / 2;
+            player.y = canvas.height / 2;
+            player.speed = 4;
+            player.trail = [];
+            
+            collectibles = [];
+            enemies = [];
+            powerups = [];
+            particles = [];
+            
+            document.getElementById('gameOver').style.display = 'none';
+            startTimer();
+            gameLoop();
+        }
+
+        // Event listeners
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // Music control
+        document.body.addEventListener('click', () => {
+            if (music.paused) {
+                music.play();
+            }
+        });
+
+        // Initialize game
+        startTimer();
+        gameLoop();
+    </script>
+</body>
+</html>
