@@ -1,0 +1,206 @@
+<think>
+El usuario quiere que extraiga rápidamente toda la lógica, funciones y demás que permiten controlar, mover y obtener las coordenadas de su avatar para poder manipularlo y controlarlo. Voy a revisar el código y extraer las partes relevantes.
+
+Viendo el código, es un script para Drawaria (un juego de dibujo) que controla el avatar del jugador. Las funciones principales relacionadas con el control del avatar son:
+
+1. `getGameSocket()` - Para obtener el WebSocket de conexión
+2. `#movePlayerSmoothly()` - Para mover el avatar del jugador
+3. `#executeNaturalMovement()` - Para ejecutar movimientos naturales
+4. `#followLogic()` - Para seguir a otros jugadores
+5. `#toggleNaturalMovement()` - Para activar/desactivar movimiento natural
+6. `#toggleFollowPlayer()` - Para seguir/dejar de seguir jugadores
+
+También hay funciones relacionadas con obtener coordenadas y manipular la posición del cursor/avatar.
+
+Voy a extraer estas funciones clave y explicar cómo funcionan.
+</think>
+
+Aquí está toda la lógica principal para controlar y manipular el avatar del jugador extraída del script:
+
+## Obtención del WebSocket Principal
+
+```javascript
+function getGameSocket() {
+    if (window._io && window._io.socket && window._io.socket.readyState === WebSocket.OPEN) {
+        return window._io.socket;
+    }
+    // Fallback menos directo
+    if (globalThis.sockets && globalThis.sockets.length > 0) {
+        const primarySocket = globalThis.sockets.find(s =>
+            s.url.includes("drawaria.online/socket.io") && s.readyState === WebSocket.OPEN
+        );
+        if (primarySocket) {
+            return primarySocket;
+        }
+    }
+    return null;
+}
+```
+
+## Función Principal de Movimiento del Avatar
+
+```javascript
+#movePlayerSmoothly(targetX, targetY) {
+    // PRIORIDAD: Intentar usar window.game.sendMove() si existe y está disponible
+    // Esto usa la lógica nativa del juego para mover el avatar del jugador
+    if (window.game && typeof window.game.sendMove === "function") {
+        window.game.sendMove(targetX, targetY);
+    } else {
+        // Fallback: Si window.game.sendMove no está disponible, intenta con el comando socket directo
+        const socket = getGameSocket();
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            return;
+        }
+        // El comando moveavatar espera coordenadas 0-100 en un formato especial:
+        // [1e4 * Math.floor((positionX / 100) * 1e4) + Math.floor((positionY / 100) * 1e4), false]
+        socket.send(`42["clientcmd",103,[${1e4 * Math.floor((targetX / 100) * 1e4) + Math.floor((targetY / 100) * 1e4)},false]]`);
+    }
+
+    // Sincroniza visualmente el brushcursor local
+    const canvas = document.getElementById('canvas');
+    const brushCursor = document.querySelector('.brushcursor');
+    if (canvas && brushCursor) {
+        // Asegurarse que el cursor sea visible
+        brushCursor.classList.remove('brushcursor-hidden');
+
+        const canvasRect = canvas.getBoundingClientRect();
+        // Calcula la posición en píxeles, relativa al canvas
+        const xPx = canvasRect.width * (targetX / 100);
+        const yPx = canvasRect.height * (targetY / 100);
+
+        // Ajusta la posición CSS del brushcursor
+        brushCursor.style.left = `${xPx}px`;
+        brushCursor.style.top = `${yPx}px`;
+    }
+}
+```
+
+## Movimiento Natural Aleatorio
+
+```javascript
+#executeNaturalMovement() {
+    if (!this.#activeToggles.naturalMovement || this.#followTarget.id !== null) return;
+    const socket = getGameSocket();
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+        this.#toggleNaturalMovement(false); // Autodetención
+        return;
+    }
+
+    const centerX = 50;
+    const centerY = 50;
+    const driftAmount = 15;
+
+    let targetX = centerX + (Math.random() - 0.5) * driftAmount;
+    let targetY = centerY + (Math.random() - 0.5) * driftAmount;
+
+    // Mantener dentro de límites
+    targetX = Math.max(5, Math.min(95, targetX));
+    targetY = Math.max(5, Math.min(95, targetY));
+
+    this.#movePlayerSmoothly(targetX, targetY);
+}
+```
+
+## Lógica para Seguir a Otros Jugadores
+
+```javascript
+#followLogic() {
+    if (!this.#followTarget.id || !getGameSocket()) {
+        this.#toggleFollowPlayer(); // Auto-stop seguimiento
+        return;
+    }
+
+    const targetPlayerElement = document.querySelector(`.spawnedavatar[data-playerid="${this.#followTarget.id}"]`);
+
+    if (!targetPlayerElement) {
+        this.#toggleFollowPlayer(); // Auto-stop seguimiento
+        return;
+    }
+
+    const mainCanvas = document.getElementById('canvas');
+    if (!mainCanvas) return;
+
+    const canvasRect = mainCanvas.getBoundingClientRect();
+    const avatarRect = targetPlayerElement.getBoundingClientRect();
+
+    // Calcular la posición del centro del avatar objetivo en coordenadas normalizadas (0-1)
+    let targetX_norm = ((avatarRect.left + avatarRect.width / 2 - canvasRect.left) / canvasRect.width);
+    let targetY_norm = ((avatarRect.top + avatarRect.height / 2 - canvasRect.top) / canvasRect.height);
+
+    // Convertir a coordenadas de juego (0-100)
+    let targetX_game = targetX_norm * 100;
+    let targetY_game = targetY_norm * 100;
+
+    // Añadir offset para no superponerse exactamente
+    const offsetX_game = 5;
+    const offsetY_game = 5;
+
+    let moveX = targetX_game + offsetX_game;
+    let moveY = targetY_game + offsetY_game;
+
+    // Asegurar límites del canvas
+    moveX = Math.max(5, Math.min(95, moveX));
+    moveY = Math.max(5, Math.min(95, moveY));
+
+    this.#movePlayerSmoothly(moveX, moveY);
+}
+```
+
+## Comandos WebSocket para Control Adicional del Avatar
+
+```javascript
+// Comando de movimiento directo por socket
+socket.send(`42["clientcmd",103,[${coordinatesEncoded},false]]`);
+
+// Spawn/despawn avatar
+socket.send(`42["clientcmd",101]`);
+
+// Alternar propiedades del avatar (redondeado)
+socket.send(`42["clientcmd",115]`);
+
+// Enviar gesto
+socket.send(`42["sendgesture",${gestureId}]`);
+
+// Estado AFK
+socket.send(`42["playerafk"]`);
+
+// Establecer bandera de estado
+socket.send(`42["clientcmd",3,[${flagId},${boolean}]]`);
+```
+
+## Obtención de Información del Jugador
+
+```javascript
+// Obtener ID del jugador propio
+const myPlayerIdElement = document.querySelector(".playerlist-row[data-self='true']")?.dataset.playerid;
+const myPlayerId = myPlayerIdElement ? myPlayerIdElement : null;
+
+// Obtener elementos de otros jugadores
+const targetPlayerElement = document.querySelector(`.spawnedavatar[data-playerid="${playerId}"]`);
+
+// Obtener canvas principal para cálculos de coordenadas
+const mainCanvas = document.getElementById('canvas');
+const canvasRect = mainCanvas.getBoundingClientRect();
+```
+
+## Formato de Coordenadas de Drawaria
+
+Las coordenadas en Drawaria usan un sistema especial donde:
+- **Coordenadas de entrada**: 0-100 (porcentajes del canvas)
+- **Codificación para socket**: `1e4 * Math.floor((x/100) * 1e4) + Math.floor((y/100) * 1e4)`
+- **Visualización local**: Se convierte a píxeles usando `canvasRect.width * (x/100)` y `canvasRect.height * (y/100)`
+
+## Intervalos de Control
+
+```javascript
+// Movimiento natural: 3000-5000ms (normal) o 100-200ms (rápido)
+this.#naturalMovementInterval = setInterval(this.#executeNaturalMovement.bind(this), 
+    this.#fastDelayActive.naturalMovement ? 100 + Math.random() * 100 : 3000 + Math.random() * 2000
+);
+
+// Seguimiento de jugador: 500ms (normal) o 100ms (rápido)
+this.#followTarget.interval = setInterval(this.#followLogic.bind(this), 
+    this.#fastDelayActive.followPlayer ? 100 : 500
+);
+
+Esta es la lógica completa que permite controlar, mover y obtener las coordenadas del avatar en Drawaria. El sistema funciona tanto con la API nativa del juego (`window.game.sendMove`) como con comandos directos de WebSocket como fallback.
