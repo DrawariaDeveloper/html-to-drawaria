@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔦 Laser Maze - HTML5 Puzzle Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: radial-gradient(circle at center, #1a1a2e, #16213e, #0f3460);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Consolas', monospace;
+            overflow: hidden;
+        }
+        
+        .game-container {
+            position: relative;
+            border: 3px solid #00d4ff;
+            border-radius: 15px;
+            background: rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
+            box-shadow: 
+                0 0 30px #00d4ff,
+                inset 0 0 20px rgba(0, 212, 255, 0.1);
+        }
+        
+        canvas {
+            display: block;
+            background: linear-gradient(135deg, #0c0c0c, #1a1a1a);
+            border-radius: 12px;
+        }
+        
+        .hud {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            color: #00ff41;
+            font-size: 16px;
+            text-shadow: 0 0 8px #00ff41;
+            z-index: 10;
+        }
+        
+        .controls {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            text-align: center;
+            font-size: 12px;
+            text-shadow: 0 0 5px #fff;
+        }
+        
+        .level-complete {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,20,40,0.95);
+            color: #00ff41;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            border: 2px solid #00ff41;
+            box-shadow: 0 0 30px #00ff41;
+            display: none;
+            z-index: 100;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #00d4ff, #00ff41);
+            border: none;
+            color: #000;
+            padding: 12px 24px;
+            font-size: 14px;
+            border-radius: 20px;
+            cursor: pointer;
+            margin: 10px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px #00ff41;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="hud">
+            <div>Level: <span id="level">1</span></div>
+            <div>Targets: <span id="targets">0</span>/<span id="totalTargets">0</span></div>
+            <div>Moves: <span id="moves">0</span></div>
+        </div>
+        
+        <canvas id="gameCanvas" width="600" height="600"></canvas>
+        
+        <div class="controls">
+            <div>🎮 Click mirrors to rotate • Direct lasers to all targets</div>
+        </div>
+
+        <div class="level-complete" id="levelComplete">
+            <h2>🎯 Level Complete!</h2>
+            <p>All targets destroyed!</p>
+            <p>Moves used: <span id="finalMoves">0</span></p>
+            <button onclick="nextLevel()">Next Level</button>
+            <button onclick="restartLevel()">Restart</button>
+        </div>
+    </div>
+
+    <audio id="bg-music" src="https://www.myinstants.com/media/sounds/super-mini-juegos-2.mp3" loop></audio>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const music = document.getElementById('bg-music');
+
+        // Game constants
+        const GRID_SIZE = 50;
+        const GRID_WIDTH = 12;
+        const GRID_HEIGHT = 12;
+        
+        // Game state
+        let currentLevel = 1;
+        let moves = 0;
+        let targetsHit = 0;
+        let totalTargets = 0;
+        let grid = [];
+        let lasers = [];
+        let particles = [];
+
+        // Game object types
+        const EMPTY = 0;
+        const WALL = 1;
+        const MIRROR_NE = 2; // / mirror
+        const MIRROR_NW = 3; // \ mirror
+        const LASER_SOURCE = 4;
+        const TARGET = 5;
+        const TARGET_HIT = 6;
+
+        // Level definitions
+        const levels = [
+            // Level 1 - Simple introduction
+            {
+                grid: [
+                    [1,1,1,1,1,1,1,1,1,1,1,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,4,0,0,0,0,0,0,0,0,5,1],
+                    [1,0,0,0,2,0,0,0,0,0,0,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,1,1,1,1,1,1,1,1,1,1,1]
+                ]
+            },
+            // Level 2 - Multiple mirrors
+            {
+                grid: [
+                    [1,1,1,1,1,1,1,1,1,1,1,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,4,0,0,2,0,0,3,0,0,5,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,0,0,2,0,0,0,0,3,0,0,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,5,0,0,3,0,0,2,0,0,0,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,1,1,1,1,1,1,1,1,1,1,1]
+                ]
+            },
+            // Level 3 - Complex path
+            {
+                grid: [
+                    [1,1,1,1,1,1,1,1,1,1,1,1],
+                    [1,4,0,0,0,1,1,0,0,0,5,1],
+                    [1,0,0,2,0,1,1,0,3,0,0,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,0,3,0,0,0,0,0,0,2,0,1],
+                    [1,1,0,0,0,2,3,0,0,0,1,1],
+                    [1,1,0,0,0,3,2,0,0,0,1,1],
+                    [1,0,2,0,0,0,0,0,0,3,0,1],
+                    [1,0,0,0,0,0,0,0,0,0,0,1],
+                    [1,0,0,3,0,1,1,0,2,0,0,1],
+                    [1,5,0,0,0,1,1,0,0,0,5,1],
+                    [1,1,1,1,1,1,1,1,1,1,1,1]
+                ]
+            }
+        ];
+
+        // Initialize game
+        function initGame() {
+            loadLevel(currentLevel);
+            calculateLasers();
+            gameLoop();
+        }
+
+        // Load level
+        function loadLevel(levelNum) {
+            if (levelNum > levels.length) {
+                alert('🎉 Congratulations! You completed all levels!');
+                currentLevel = 1;
+                levelNum = 1;
+            }
+            
+            const level = levels[levelNum - 1];
+            grid = level.grid.map(row => [...row]);
+            moves = 0;
+            targetsHit = 0;
+            totalTargets = 0;
+            lasers = [];
+            particles = [];
+            
+            // Count targets
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y][x] === TARGET) {
+                        totalTargets++;
+                    }
+                }
+            }
+            
+            updateHUD();
+        }
+
+        // Calculate laser paths
+        function calculateLasers() {
+            lasers = [];
+            
+            // Reset targets
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y][x] === TARGET_HIT) {
+                        grid[y][x] = TARGET;
+                    }
+                }
+            }
+            
+            targetsHit = 0;
+            
+            // Find laser sources
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y][x] === LASER_SOURCE) {
+                        traceLaser(x, y, 1, 0); // Start going right
+                    }
+                }
+            }
+            
+            updateHUD();
+            
+            // Check win condition
+            if (targetsHit >= totalTargets) {
+                setTimeout(() => {
+                    document.getElementById('finalMoves').textContent = moves;
+                    document.getElementById('levelComplete').style.display = 'block';
+                }, 500);
+            }
+        }
+
+        // Trace laser path
+        function traceLaser(startX, startY, dx, dy) {
+            let x = startX;
+            let y = startY;
+            let path = [{x: startX, y: startY}];
+            let maxSteps = 200; // Prevent infinite loops
+            let steps = 0;
+            
+            while (steps < maxSteps) {
+                x += dx;
+                y += dy;
+                steps++;
+                
+                if (x < 0 || x >= GRID_WIDTH || y < 0 || y >= GRID_HEIGHT) {
+                    break;
+                }
+                
+                const cell = grid[y][x];
+                path.push({x, y});
+                
+                if (cell === WALL) {
+                    path.pop(); // Remove wall position
+                    break;
+                }
+                
+                if (cell === TARGET) {
+                    grid[y][x] = TARGET_HIT;
+                    targetsHit++;
+                    createParticles(x * GRID_SIZE + GRID_SIZE/2, y * GRID_SIZE + GRID_SIZE/2, '#ff0040');
+                    break;
+                }
+                
+                if (cell === MIRROR_NE) { // / mirror
+                    if (dx === 1 && dy === 0) { dx = 0; dy = -1; } // right -> up
+                    else if (dx === -1 && dy === 0) { dx = 0; dy = 1; } // left -> down
+                    else if (dx === 0 && dy === 1) { dx = -1; dy = 0; } // down -> left
+                    else if (dx === 0 && dy === -1) { dx = 1; dy = 0; } // up -> right
+                }
+                
+                if (cell === MIRROR_NW) { // \ mirror
+                    if (dx === 1 && dy === 0) { dx = 0; dy = 1; } // right -> down
+                    else if (dx === -1 && dy === 0) { dx = 0; dy = -1; } // left -> up
+                    else if (dx === 0 && dy === 1) { dx = 1; dy = 0; } // down -> right
+                    else if (dx === 0 && dy === -1) { dx = -1; dy = 0; } // up -> left
+                }
+            }
+            
+            if (path.length > 1) {
+                lasers.push(path);
+            }
+        }
+
+        // Create particles
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 12; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    life: 60,
+                    maxLife: 60,
+                    color: color,
+                    size: Math.random() * 3 + 1
+                });
+            }
+        }
+
+        // Update particles
+        function updateParticles() {
+            particles.forEach((particle, index) => {
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+                particle.vx *= 0.98;
+                particle.vy *= 0.98;
+                particle.life--;
+                
+                if (particle.life <= 0) {
+                    particles.splice(index, 1);
+                }
+            });
+        }
+
+        // Update HUD
+        function updateHUD() {
+            document.getElementById('level').textContent = currentLevel;
+            document.getElementById('targets').textContent = targetsHit;
+            document.getElementById('totalTargets').textContent = totalTargets;
+            document.getElementById('moves').textContent = moves;
+        }
+
+        // Draw functions
+        function drawGrid() {
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    const cell = grid[y][x];
+                    const pixelX = x * GRID_SIZE;
+                    const pixelY = y * GRID_SIZE;
+                    
+                    // Grid lines
+                    ctx.strokeStyle = 'rgba(0,212,255,0.1)';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(pixelX, pixelY, GRID_SIZE, GRID_SIZE);
+                    
+                    switch(cell) {
+                        case WALL:
+                            ctx.fillStyle = '#333';
+                            ctx.fillRect(pixelX, pixelY, GRID_SIZE, GRID_SIZE);
+                            ctx.strokeStyle = '#666';
+                            ctx.lineWidth = 2;
+                            ctx.strokeRect(pixelX + 1, pixelY + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+                            break;
+                            
+                        case MIRROR_NE:
+                            drawMirror(pixelX, pixelY, '/');
+                            break;
+                            
+                        case MIRROR_NW:
+                            drawMirror(pixelX, pixelY, '\\');
+                            break;
+                            
+                        case LASER_SOURCE:
+                            drawLaserSource(pixelX, pixelY);
+                            break;
+                            
+                        case TARGET:
+                            drawTarget(pixelX, pixelY, false);
+                            break;
+                            
+                        case TARGET_HIT:
+                            drawTarget(pixelX, pixelY, true);
+                            break;
+                    }
+                }
+            }
+        }
+
+        function drawMirror(x, y, type) {
+            const centerX = x + GRID_SIZE / 2;
+            const centerY = y + GRID_SIZE / 2;
+            const size = GRID_SIZE * 0.6;
+            
+            ctx.strokeStyle = '#00d4ff';
+            ctx.lineWidth = 4;
+            ctx.shadowColor = '#00d4ff';
+            ctx.shadowBlur = 10;
+            
+            ctx.beginPath();
+            if (type === '/') {
+                ctx.moveTo(centerX - size/2, centerY + size/2);
+                ctx.lineTo(centerX + size/2, centerY - size/2);
+            } else {
+                ctx.moveTo(centerX - size/2, centerY - size/2);
+                ctx.lineTo(centerX + size/2, centerY + size/2);
+            }
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            
+            // Mirror base
+            ctx.fillStyle = 'rgba(0,212,255,0.2)';
+            ctx.fillRect(x + 5, y + 5, GRID_SIZE - 10, GRID_SIZE - 10);
+        }
+
+        function drawLaserSource(x, y) {
+            const centerX = x + GRID_SIZE / 2;
+            const centerY = y + GRID_SIZE / 2;
+            
+            // Outer glow
+            ctx.fillStyle = 'rgba(255,0,100,0.3)';
+            ctx.fillRect(x + 5, y + 5, GRID_SIZE - 10, GRID_SIZE - 10);
+            
+            // Inner source
+            ctx.fillStyle = '#ff0064';
+            ctx.shadowColor = '#ff0064';
+            ctx.shadowBlur = 15;
+            ctx.fillRect(x + 15, y + 15, GRID_SIZE - 30, GRID_SIZE - 30);
+            ctx.shadowBlur = 0;
+            
+            // Center dot
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawTarget(x, y, hit) {
+            const centerX = x + GRID_SIZE / 2;
+            const centerY = y + GRID_SIZE / 2;
+            const color = hit ? '#00ff41' : '#ffaa00';
+            
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.shadowColor = color;
+            ctx.shadowBlur = hit ? 20 : 10;
+            
+            // Target circles
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 15, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 10, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            if (hit) {
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            ctx.shadowBlur = 0;
+        }
+
+        function drawLasers() {
+            lasers.forEach(laser => {
+                if (laser.length < 2) return;
+                
+                ctx.strokeStyle = '#ff0064';
+                ctx.lineWidth = 3;
+                ctx.shadowColor = '#ff0064';
+                ctx.shadowBlur = 10;
+                
+                ctx.beginPath();
+                for (let i = 0; i < laser.length; i++) {
+                    const point = laser[i];
+                    const pixelX = point.x * GRID_SIZE + GRID_SIZE / 2;
+                    const pixelY = point.y * GRID_SIZE + GRID_SIZE / 2;
+                    
+                    if (i === 0) {
+                        ctx.moveTo(pixelX, pixelY);
+                    } else {
+                        ctx.lineTo(pixelX, pixelY);
+                    }
+                }
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            });
+        }
+
+        function drawParticles() {
+            particles.forEach(particle => {
+                const alpha = particle.life / particle.maxLife;
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = particle.color;
+                ctx.fillRect(particle.x - particle.size/2, particle.y - particle.size/2, particle.size, particle.size);
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        // Game loop
+        function gameLoop() {
+            updateParticles();
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+            drawLasers();
+            drawParticles();
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Input handling
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / GRID_SIZE);
+            const y = Math.floor((e.clientY - rect.top) / GRID_SIZE);
+            
+            if (x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT) {
+                const cell = grid[y][x];
+                
+                if (cell === MIRROR_NE) {
+                    grid[y][x] = MIRROR_NW;
+                    moves++;
+                    calculateLasers();
+                } else if (cell === MIRROR_NW) {
+                    grid[y][x] = MIRROR_NE;
+                    moves++;
+                    calculateLasers();
+                }
+            }
+        });
+
+        // Game control functions
+        function nextLevel() {
+            currentLevel++;
+            document.getElementById('levelComplete').style.display = 'none';
+            loadLevel(currentLevel);
+            calculateLasers();
+        }
+
+        function restartLevel() {
+            document.getElementById('levelComplete').style.display = 'none';
+            loadLevel(currentLevel);
+            calculateLasers();
+        }
+
+        // Music control
+        document.body.addEventListener('click', () => {
+            if (music.paused) {
+                music.play();
+            }
+        });
+
+        // Initialize game
+        initGame();
+    </script>
+</body>
+</html>
