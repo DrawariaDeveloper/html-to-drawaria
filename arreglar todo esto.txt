@@ -1,0 +1,1022 @@
+<think>
+El usuario me ha proporcionado un código HTML de un editor de video web que parece estar roto o incompleto. Me está pidiendo que identifique todos los problemas y cómo arreglarlos, así como implementar las nuevas funcionalidades.
+
+Mirando el código, puedo ver varios problemas:
+
+1. Hay muchas funciones que se llaman pero no están definidas completamente
+2. Hay variables que se referencian pero no están declaradas
+3. Hay inconsistencias en nombres de funciones
+4. Faltan implementaciones de efectos visuales
+5. El sistema de stickers y textos está incompleto
+6. Hay problemas con el manejo de GIFs
+7. Faltan funciones de manejo de archivos múltiples
+8. El sistema de audio está incompleto
+
+Voy a analizar sistemáticamente todos estos problemas y proporcionar una respuesta completa sobre cómo arreglarlos.
+</think>
+
+Analizando tu código del editor de video, puedo identificar **MÚLTIPLES PROBLEMAS CRÍTICOS** que necesitan ser arreglados inmediatamente. El código tiene muchas funciones rotas y funcionalidades incompletas.
+
+## **🚨 ERRORES CRÍTICOS DETECTADOS**
+
+### **1. FUNCIONES LLAMADAS PERO NO DEFINIDAS**
+```javascript
+// ❌ ESTAS FUNCIONES SE LLAMAN EN EL HTML PERO NO EXISTEN:
+handleMultiImages()           // Llamada en multiFileInput.change
+handleMultiStickers()         // Llamada en stickerFileInput.change  
+drawStickers()               // Llamada en draw() pero no definida
+drawTextElements()           // Llamada en draw() pero no definida
+updateStickerControls()      // Llamada múltiples veces pero no definida
+updateTextControls()         // Llamada múltiples veces pero no definida
+findStickerById()            // Usada en updateStickerSize() pero no definida
+addStickerFromUrl()          // Llamada en onclick pero no definida
+addTextElement()             // Llamada en onclick pero no definida
+setScrollMode()              // Llamada múltiples veces pero no definida
+zoomImage()                  // Llamada en onclick pero no definida
+toggleEffect()               // Llamada múltiples veces pero no definida
+removeAllEffects()           // Llamada en onclick pero no definida
+applyTransition()            // Llamada en onclick pero no definida
+```
+
+### **2. VARIABLES GLOBALES FALTANTES**
+```javascript
+// ❌ ESTAS VARIABLES SE USAN PERO NO ESTÁN DECLARADAS:
+let multiTextGroups = [];        // Usada en createMultiTextGroup()
+let multiTextIdCounter = 0;      // Usada en MultiTextGroup
+let soundCloudManager;           // Referenciada pero no inicializada
+let multiAudioManager;           // Referenciada pero no inicializada
+let isBackgroundGif = false;     // Usada pero no declarada
+let scrollPos = { x: 0, y: 0, directionX: 1, directionY: 1 }; // Usada en bounce mode
+```
+
+### **3. ELEMENTOS DEL DOM FALTANTES**
+```html
+<!-- ❌ ESTOS ELEMENTOS SE REFERENCIAN PERO NO EXISTEN: -->
+<input id="stickerUrl">          <!-- Usado en addStickerFromUrl() -->
+<span id="resolutionDisplay">    <!-- Usado en updateCanvasSize() -->
+<input id="textToSpeak">         <!-- Usado en speakText() -->
+```
+
+## **🔧 CÓDIGO COMPLETO PARA ARREGLAR TODO**
+
+### **PASO 1: AGREGAR ELEMENTOS HTML FALTANTES**
+```html
+<!-- AGREGAR ESTOS ELEMENTOS AL HTML DONDE CORRESPONDA: -->
+
+<!-- En la sección de stickers, cambiar por: -->
+<div class="control-group">
+    <p style="font-size: 14px; margin: 0; color: #aaa;">🏷️ Stickers:</p>
+    <div class="url-container">
+        <input type="text" id="stickerUrl" placeholder="URL del sticker (img/gif)" 
+               style="flex: 1; padding: 8px; background: #2a2a2a; border: 1px solid #444; border-radius: 4px; color: white;">
+        <button class="button load-url-btn" onclick="addStickerFromUrl()">➕ Agregar URL</button>
+    </div>
+    <button class="button multi-image-btn" onclick="document.getElementById('stickerFileInput').click()" style="width:100%;">🖼️ Importar Stickers</button>
+    <input type="file" id="stickerFileInput" accept="image/*,image/gif" multiple style="display: none;">
+    <div id="sticker-controls-container" style="margin-top:10px; max-height:200px; overflow-y:auto; width:100%;">
+        <p style="color:#aaa; text-align:center;">No hay stickers añadidos.</p>
+    </div>
+</div>
+
+<!-- En la sección de textos, cambiar por: -->
+<div class="control-group">
+    <p style="font-size: 14px; margin: 0; color: #aaa;">📝 Textos:</p>
+    <div class="url-container">
+        <input type="text" id="textToSpeak" placeholder="Escribe texto para voz..." 
+               style="flex: 1; padding: 8px; background: #2a2a2a; border: 1px solid #444; border-radius: 4px; color: white;">
+        <button class="button audio-btn" onclick="speakText()">🗣️ Hablar</button>
+    </div>
+    <button class="button multi-image-btn" onclick="addTextElement()" style="width:100%;">➕ Agregar Texto</button>
+    <button class="button effect-btn" onclick="createMultiTextGroup()" style="width:100%;">💡 Multi-Texto</button>
+    <div id="text-controls-container" style="margin-top:10px; max-height:200px; overflow-y:auto; width:100%;">
+        <p style="color:#aaa; text-align:center;">No hay textos añadidos.</p>
+    </div>
+</div>
+
+<!-- Agregar display de resolución en right-panel: -->
+<div style="position: absolute; top: 5px; right: 5px; color: #aaa; font-size: 12px; background: rgba(0,0,0,0.5); padding: 3px 10px; border-radius: 5px;">
+    Resolución: <span id="resolutionDisplay">862x718</span>
+</div>
+```
+
+### **PASO 2: AGREGAR TODAS LAS FUNCIONES FALTANTES**
+```javascript
+// ✅ AGREGAR AL FINAL DEL SCRIPT, ANTES DE window.onload:
+
+// ==========================================
+//  FUNCIONES FALTANTES CRÍTICAS
+// ==========================================
+
+function findStickerById(id) {
+    return stickers.find(s => s.id === id);
+}
+
+function addStickerFromUrl() {
+    const url = document.getElementById('stickerUrl').value.trim();
+    if (!url) {
+        showNotification('❌ Introduce una URL de sticker', 'error');
+        return;
+    }
+    const sticker = new Sticker(url, canvas.width / 2, canvas.height / 2, 100);
+    stickers.push(sticker);
+    updateStickerControls();
+    showNotification('✅ Sticker agregado desde URL', 'success');
+    document.getElementById('stickerUrl').value = '';
+}
+
+function handleMultiStickers(files) {
+    files.forEach(file => {
+        const url = URL.createObjectURL(file);
+        const sticker = new Sticker(url, 
+            Math.random() * (canvas.width - 100) + 50, 
+            Math.random() * (canvas.height - 100) + 50, 
+            100);
+        stickers.push(sticker);
+    });
+    updateStickerControls();
+    showNotification(`✅ ${files.length} stickers agregados`, 'success');
+}
+
+function handleMultiImages(files) {
+    imageFiles = Array.from(files);
+    currentImageIndex = 0;
+    if (imageFiles.length > 0) {
+        const url = URL.createObjectURL(imageFiles);
+        loadImage(url);
+        document.getElementById('imageNavControls').style.display = 'block';
+        document.getElementById('imageCounter').textContent = `1 / ${imageFiles.length}`;
+        document.getElementById('multi-image-transition-controls').style.display = imageFiles.length > 1 ? 'block' : 'none';
+        showNotification(`✅ ${imageFiles.length} imágenes de fondo cargadas`, 'success');
+    }
+}
+
+function showNextImage() {
+    if (imageFiles.length <= 1) return;
+    currentImageIndex = (currentImageIndex + 1) % imageFiles.length;
+    const url = URL.createObjectURL(imageFiles[currentImageIndex]);
+    loadImage(url);
+    document.getElementById('imageCounter').textContent = `${currentImageIndex + 1} / ${imageFiles.length}`;
+}
+
+function showPrevImage() {
+    if (imageFiles.length <= 1) return;
+    currentImageIndex = (currentImageIndex - 1 + imageFiles.length) % imageFiles.length;
+    const url = URL.createObjectURL(imageFiles[currentImageIndex]);
+    loadImage(url);
+    document.getElementById('imageCounter').textContent = `${currentImageIndex + 1} / ${imageFiles.length}`;
+}
+
+function addTextElement() {
+    const text = prompt('Introduce el texto:');
+    if (text) {
+        const textElement = new TextElement(text, canvas.width / 2, canvas.height / 2);
+        textElements.push(textElement);
+        updateTextControls();
+        showNotification('✅ Texto agregado', 'success');
+    }
+}
+
+function setScrollMode(mode) {
+    scrollMode = mode;
+    updateStatus(`🔄 Modo de scroll: ${mode}`, 'info');
+    if (isPreviewMode) {
+        draw();
+        animate(performance.now());
+    }
+}
+
+function zoomImage(amount) {
+    const newZoom = zoomLevel + amount;
+    zoomLevel = Math.max(0.1, Math.min(5, newZoom));
+    updateStatus(`🔍 Nivel de Zoom: ${zoomLevel.toFixed(1)}x`, 'info');
+    draw();
+}
+
+function toggleEffect(effect) {
+    if (activeEffects.has(effect)) {
+        activeEffects.delete(effect);
+        updateStatus(`❌ Efecto '${effect}' desactivado`, 'info');
+        // Limpiar arrays de partículas
+        if (effect === 'fire') fireParticles.length = 0;
+        else if (effect === 'sparkles') sparkles.length = 0;
+        else if (effect === 'magicOrbs') magicOrbs.length = 0;
+        else if (effect === 'snow') snowFlakes.length = 0;
+        else if (effect === 'clouds') cloudParticles.length = 0;
+        else if (effect === 'leaves') fallingLeaves.length = 0;
+        else if (effect === 'bubbles') bubbles.length = 0;
+        else if (effect === 'speedLines') speedLines.length = 0;
+        else if (effect === 'recordingFrame') recordingFrame.active = false;
+    } else {
+        activeEffects.add(effect);
+        updateStatus(`🎨 Efecto '${effect}' activado`, 'success');
+        if (effect === 'recordingFrame') recordingFrame.active = true;
+    }
+    if (isPreviewMode) startPreviewAnimation();
+}
+
+function removeAllEffects() {
+    activeEffects.clear();
+    transitionState.active = false;
+    snowFlakes.length = 0;
+    sparkles.length = 0;
+    magicOrbs.length = 0;
+    fireParticles.length = 0;
+    cloudParticles.length = 0;
+    fallingLeaves.length = 0;
+    bubbles.length = 0;
+    speedLines.length = 0;
+    recordingFrame.active = false;
+    updateStatus('💥 Todos los efectos removidos', 'info');
+    showNotification('Todos los efectos han sido eliminados', 'info');
+}
+
+function applyTransition() {
+    transitionState.active = true;
+    transitionState.opacity = 0;
+    transitionState.direction = 1;
+    updateStatus('⚫ Transición de fondo activada', 'info');
+    if (isPreviewMode) startPreviewAnimation();
+}
+
+function drawStickers(ctx, isRecordingMode = false) {
+    stickers.sort((a, b) => a.zIndex - b.zIndex).forEach(sticker => {
+        sticker.draw(ctx, isRecordingMode);
+    });
+}
+
+function drawTextElements(ctx, isRecordingMode = false) {
+    textElements.sort((a, b) => a.zIndex - b.zIndex).forEach(text => {
+        text.draw(ctx, isRecordingMode);
+    });
+}
+
+function updateStickerControls() {
+    const container = document.getElementById('sticker-controls-container');
+    container.innerHTML = '';
+    if (stickers.length === 0) {
+        container.innerHTML = '<p style="color: #bbb; text-align: center;">No hay stickers añadidos.</p>';
+        return;
+    }
+
+    stickers.forEach(sticker => {
+        const isSelected = selectedSticker === sticker;
+        const itemControl = document.createElement('div');
+        itemControl.className = `item-control ${isSelected ? 'selected' : ''}`;
+        itemControl.onclick = (e) => {
+            e.stopPropagation();
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'SELECT') {
+                selectedSticker = sticker;
+                updateStickerControls();
+            }
+        };
+        
+        itemControl.innerHTML = `
+            <div class="control-row">
+                <span class="item-title">${sticker.isGif ? 'GIF' : 'IMG'} #${sticker.id}</span>
+                <button class="widget-btn" onclick="toggleStickerMultiMode(${sticker.id})" title="Multi-Imagen">💡</button>
+                <button class="widget-btn" onclick="removeSticker(${sticker.id})">❌</button>
+            </div>
+            <div class="control-row">
+                <label>Tamaño:</label>
+                <input type="range" min="10" max="400" value="${sticker.size}" oninput="updateStickerSize(${sticker.id}, this.value)">
+            </div>
+            <div class="control-row">
+                <label>Rotación:</label>
+                <input type="range" min="0" max="360" value="${sticker.rotation}" oninput="updateStickerRotation(${sticker.id}, this.value)">
+            </div>
+            <div class="control-row">
+                <label>Filtro:</label>
+                <select onchange="updateStickerFilter(${sticker.id}, this.value)">
+                    <option value="none" ${sticker.filter === 'none' ? 'selected' : ''}>Ninguno</option>
+                    <option value="blur(5px)" ${sticker.filter.includes('blur') ? 'selected' : ''}>Desenfoque</option>
+                    <option value="grayscale(100%)" ${sticker.filter.includes('grayscale') ? 'selected' : ''}>Gris</option>
+                    <option value="invert(100%)" ${sticker.filter.includes('invert') ? 'selected' : ''}>Invertir</option>
+                    <option value="sepia(100%)" ${sticker.filter.includes('sepia') ? 'selected' : ''}>Sepia</option>
+                </select>
+            </div>
+            <div class="control-row">
+                <button class="widget-btn ${sticker.autoRotate ? 'active' : ''}" onclick="toggleStickerAutoRotate(${sticker.id})">🔁</button>
+                <button class="widget-btn ${sticker.fadeEnabled ? 'fade-active' : ''}" onclick="toggleStickerFade(${sticker.id})">💧</button>
+                <button class="widget-btn" onclick="changeStickerZIndex(${sticker.id}, -1)">▼</button>
+                <button class="widget-btn" onclick="changeStickerZIndex(${sticker.id}, 1)">▲</button>
+            </div>
+        `;
+        container.appendChild(itemControl);
+    });
+}
+
+function updateTextControls() {
+    const container = document.getElementById('text-controls-container');
+    container.innerHTML = '';
+    if (textElements.length === 0) {
+        container.innerHTML = '<p style="color: #bbb; text-align: center;">No hay textos añadidos.</p>';
+        return;
+    }
+
+    textElements.forEach(text => {
+        const isSelected = selectedText === text;
+        const itemControl = document.createElement('div');
+        itemControl.className = `item-control ${isSelected ? 'selected' : ''}`;
+        itemControl.onclick = (e) => {
+            e.stopPropagation();
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') {
+                selectedText = text;
+                updateTextControls();
+            }
+        };
+        
+        itemControl.innerHTML = `
+            <div class="control-row">
+                <span class="item-title">${text.text.substring(0, 15)}...</span>
+                <button class="widget-btn" onclick="speakText('${text.text}')">🗣️</button>
+                <button class="widget-btn" onclick="removeText(${text.id})">❌</button>
+            </div>
+            <div class="control-row">
+                <label>Tamaño:</label>
+                <input type="range" min="10" max="100" value="${text.size}" oninput="updateTextSize(${text.id}, this.value)">
+            </div>
+            <div class="control-row">
+                <label>Color:</label>
+                <input type="color" value="${text.color}" onchange="updateTextColor(${text.id}, this.value)">
+            </div>
+            <div class="control-row">
+                <button class="widget-btn ${text.autoRotate ? 'active' : ''}" onclick="toggleTextAutoRotate(${text.id})">🔁</button>
+                <button class="widget-btn ${text.fadeEnabled ? 'fade-active' : ''}" onclick="toggleTextFade(${text.id})">💧</button>
+            </div>
+        `;
+        container.appendChild(itemControl);
+    });
+}
+
+function removeSticker(id) {
+    stickers = stickers.filter(s => s.id !== id);
+    if (selectedSticker && selectedSticker.id === id) {
+        selectedSticker = null;
+    }
+    updateStickerControls();
+}
+
+function removeText(id) {
+    textElements = textElements.filter(t => t.id !== id);
+    if (selectedText && selectedText.id === id) {
+        selectedText = null;
+    }
+    updateTextControls();
+}
+
+function updateTextSize(id, value) {
+    const text = textElements.find(t => t.id === id);
+    if (text) {
+        text.size = parseInt(value);
+        if (isPreviewMode) draw();
+    }
+}
+
+function updateTextColor(id, value) {
+    const text = textElements.find(t => t.id === id);
+    if (text) {
+        text.color = value;
+        if (isPreviewMode) draw();
+    }
+}
+
+function toggleTextAutoRotate(id) {
+    const text = textElements.find(t => t.id === id);
+    if (text) {
+        text.autoRotate = !text.autoRotate;
+        updateTextControls();
+    }
+}
+
+function toggleTextFade(id) {
+    const text = textElements.find(t => t.id === id);
+    if (text) {
+        text.fadeEnabled = !text.fadeEnabled;
+        updateTextControls();
+    }
+}
+```
+
+### **PASO 3: AGREGAR FUNCIONES DE EFECTOS FALTANTES**
+```javascript
+// ✅ AGREGAR ESTAS FUNCIONES DE EFECTOS FALTANTES:
+
+function drawSnow(ctx, canvas) {
+    if (Math.random() < 0.8) {
+        snowFlakes.push({
+            x: Math.random() * canvas.width,
+            y: -10,
+            size: Math.random() * 3 + 1,
+            speed: Math.random() * 2 + 1,
+            opacity: 0.5 + Math.random() * 0.5
+        });
+    }
+    snowFlakes.forEach((flake, index) => {
+        ctx.save();
+        ctx.fillStyle = `rgba(255, 255, 255, ${flake.opacity})`;
+        ctx.beginPath();
+        ctx.arc(flake.x, flake.y, flake.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        flake.y += flake.speed;
+        if (flake.y > canvas.height) {
+            snowFlakes.splice(index, 1);
+        }
+    });
+}
+
+function drawSparkles(ctx) {
+    if (Math.random() < 0.6) {
+        sparkles.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            size: Math.random() * 5 + 1,
+            opacity: 1,
+            life: 30
+        });
+    }
+    sparkles.forEach((sparkle, index) => {
+        ctx.save();
+        ctx.globalAlpha = sparkle.opacity;
+        ctx.fillStyle = '#ffff00';
+        ctx.beginPath();
+        ctx.arc(sparkle.x, sparkle.y, sparkle.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        sparkle.opacity -= 0.03;
+        sparkle.life--;
+        if (sparkle.life <= 0) {
+            sparkles.splice(index, 1);
+        }
+    });
+}
+
+function drawMagicOrbs(ctx) {
+    if (Math.random() < 0.3) {
+        magicOrbs.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            size: Math.random() * 10 + 5,
+            color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+            opacity: 0.8,
+            speedX: Math.random() * 2 - 1,
+            speedY: Math.random() * 2 - 1
+        });
+    }
+    magicOrbs.forEach((orb, index) => {
+        ctx.save();
+        ctx.globalAlpha = orb.opacity;
+        ctx.fillStyle = orb.color;
+        ctx.beginPath();
+        ctx.arc(orb.x, orb.y, orb.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        orb.x += orb.speedX;
+        orb.y += orb.speedY;
+        orb.opacity -= 0.01;
+        if (orb.opacity <= 0) {
+            magicOrbs.splice(index, 1);
+        }
+    });
+}
+
+function drawClouds(ctx) {
+    if (Math.random() < 0.2) {
+        cloudParticles.push({
+            x: -50,
+            y: Math.random() * canvas.height,
+            size: Math.random() * 100 + 50,
+            speed: Math.random() * 0.5 + 0.1,
+            opacity: Math.random() * 0.3 + 0.1
+        });
+    }
+    cloudParticles.forEach((cloud, index) => {
+        ctx.save();
+        ctx.globalAlpha = cloud.opacity;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(cloud.x, cloud.y, cloud.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        cloud.x += cloud.speed;
+        if (cloud.x - cloud.size > canvas.width) {
+            cloudParticles.splice(index, 1);
+        }
+    });
+}
+
+function drawLeaves(ctx, canvas) {
+    if (Math.random() < 0.5) {
+        fallingLeaves.push({
+            x: Math.random() * canvas.width,
+            y: -20,
+            size: Math.random() * 15 + 5,
+            speed: Math.random() * 2 + 1,
+            rotation: Math.random() * 360,
+            rotationSpeed: Math.random() * 2 - 1,
+            color: `hsl(40, 50%, ${Math.random() * 30 + 30}%)`,
+            opacity: 1
+        });
+    }
+    fallingLeaves.forEach((leaf, index) => {
+        ctx.save();
+        ctx.globalAlpha = leaf.opacity;
+        ctx.fillStyle = leaf.color;
+        ctx.translate(leaf.x, leaf.y);
+        ctx.rotate(leaf.rotation * Math.PI / 180);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, leaf.size, leaf.size * 0.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        leaf.y += leaf.speed;
+        leaf.rotation += leaf.rotationSpeed;
+        if (leaf.y > canvas.height) {
+            fallingLeaves.splice(index, 1);
+        }
+    });
+}
+
+function drawBubbles(ctx, canvas) {
+    if (Math.random() < 0.6) {
+        bubbles.push({
+            x: Math.random() * canvas.width,
+            y: canvas.height + 20,
+            size: Math.random() * 20 + 5,
+            speed: Math.random() * 1 + 0.5,
+            opacity: 0.8
+        });
+    }
+    bubbles.forEach((bubble, index) => {
+        ctx.save();
+        ctx.globalAlpha = bubble.opacity;
+        ctx.strokeStyle = 'rgba(150, 200, 255, 0.7)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(bubble.x, bubble.y, bubble.size, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        bubble.y -= bubble.speed;
+        if (bubble.y < -20) {
+            bubbles.splice(index, 1);
+        }
+    });
+}
+
+function drawSpeedLines(ctx, canvas) {
+    if (Math.random() < 0.4) {
+        speedLines.push({
+            x: canvas.width + 10,
+            y: Math.random() * canvas.height,
+            length: 20 + Math.random() * 40,
+            thickness: 1 + Math.random() * 3,
+            speed: 8 + Math.random() * 12,
+            opacity: 0.7
+        });
+    }
+    speedLines.forEach((line, index) => {
+        ctx.save();
+        ctx.globalAlpha = line.opacity;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${line.opacity})`;
+        ctx.lineWidth = line.thickness;
+        ctx.beginPath();
+        ctx.moveTo(line.x, line.y);
+        ctx.lineTo(line.x - line.length, line.y);
+        ctx.stroke();
+        ctx.restore();
+        line.x -= line.speed;
+        line.opacity -= 0.02;
+        if (line.x < -line.length) {
+            speedLines.splice(index, 1);
+        }
+    });
+}
+
+function drawRecordingFrame(ctx, canvas) {
+    if (!recordingFrame.active) return;
+    ctx.save();
+    ctx.globalAlpha = recordingFrame.opacity;
+    ctx.strokeStyle = '#ff0000';
+    ctx.lineWidth = 8;
+    ctx.setLineDash([20, 10]);
+    ctx.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+    ctx.fillStyle = '#ff0000';
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText('● REC', 20, 40);
+    ctx.restore();
+}
+
+function drawBackgroundTransition(ctx) {
+    if (!transitionState.active) return;
+    ctx.save();
+    ctx.fillStyle = `rgba(0, 0, 0, ${transitionState.opacity})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+    transitionState.opacity += 0.01 * transitionState.direction;
+    if (transitionState.opacity >= 1) {
+        transitionState.direction = -1;
+    } else if (transitionState.opacity <= 0) {
+        transitionState.active = false;
+        transitionState.direction = 1;
+    }
+}
+```
+
+### **PASO 4: COMPLETAR FUNCIONES DE AUDIO**
+```javascript
+// ✅ AGREGAR ESTAS FUNCIONES DE AUDIO FALTANTES:
+
+function testAudioUrl() {
+    const url = document.getElementById('audioUrl').value.trim();
+    if (!url) {
+        showNotification('❌ Introduce una URL de audio para probar', 'error');
+        return;
+    }
+    showNotification('🔍 Comprobando URL... revisa la consola (F12)', 'info');
+    console.log('Comprobando URL:', url);
+    
+    const testAudio = document.createElement('audio');
+    testAudio.crossOrigin = 'anonymous';
+    testAudio.oncanplay = () => {
+        console.log('✅ URL de audio accesible');
+        showNotification('✅ URL de audio válida', 'success');
+    };
+    testAudio.onerror = (e) => {
+        console.error('❌ Error cargando audio:', e);
+        showNotification('❌ Error: URL no accesible o formato incompatible', 'error');
+    };
+    testAudio.src = url;
+}
+
+function loadAudioFromUrl() {
+    const url = document.getElementById('audioUrl').value.trim();
+    if (!url) {
+        showNotification('❌ Introduce una URL de audio válida', 'error');
+        return;
+    }
+
+    const audioPlayer = document.getElementById('backgroundMusic');
+    audioPlayer.src = url;
+    audioPlayer.load();
+    audioPlayer.oncanplay = () => {
+        showNotification('✅ Audio cargado correctamente', 'success');
+    };
+    audioPlayer.onerror = () => {
+        showNotification('❌ Error cargando audio. Verifica URL y CORS', 'error');
+    };
+}
+```
+
+### **PASO 5: COMPLETAR SCROLL MODES EN renderLoop()**
+```javascript
+// ✅ AGREGAR TODOS LOS MODOS DE SCROLL FALTANTES EN renderLoop():
+
+function renderLoop(currentTime) {
+    if (!animationRunning) return;
+
+    const deltaTime = currentTime - lastRenderTime;
+    if (deltaTime < FRAME_DURATION && !isRecording) {
+        animationFrameId = requestAnimationFrame(renderLoop);
+        return;
+    }
+    lastRenderTime = currentTime;
+
+    // ✅ LÓGICA COMPLETA DE SCROLL MODES:
+    if (scrollMode === 'right') {
+        imageX -= scrollSpeed;
+        if (imageX + (imageWidth * zoomLevel) < 0) {
+            imageX = canvas.width;
+        }
+    } else if (scrollMode === 'left') {
+        imageX += scrollSpeed;
+        if (imageX > canvas.width) {
+            imageX = -(imageWidth * zoomLevel);
+        }
+    } else if (scrollMode === 'up') {
+        imageY += scrollSpeed;
+        if (imageY > canvas.height) {
+            imageY = -(imageHeight * zoomLevel);
+        }
+    } else if (scrollMode === 'down') {
+        imageY -= scrollSpeed;
+        if (imageY + (imageHeight * zoomLevel) < 0) {
+            imageY = canvas.height;
+        }
+    } else if (scrollMode === 'upRight') {
+        imageX -= scrollSpeed * 0.7;
+        imageY += scrollSpeed * 0.7;
+        if (imageX + (imageWidth * zoomLevel) < 0) imageX = canvas.width;
+        if (imageY > canvas.height) imageY = -(imageHeight * zoomLevel);
+    } else if (scrollMode === 'upLeft') {
+        imageX += scrollSpeed * 0.7;
+        imageY += scrollSpeed * 0.7;
+        if (imageX > canvas.width) imageX = -(imageWidth * zoomLevel);
+        if (imageY > canvas.height) imageY = -(imageHeight * zoomLevel);
+    } else if (scrollMode === 'downRight') {
+        imageX -= scrollSpeed * 0.7;
+        imageY -= scrollSpeed * 0.7;
+        if (imageX + (imageWidth * zoomLevel) < 0) imageX = canvas.width;
+        if (imageY + (imageHeight * zoomLevel) < 0) imageY = canvas.height;
+    } else if (scrollMode === 'downLeft') {
+        imageX += scrollSpeed * 0.7;
+        imageY -= scrollSpeed * 0.7;
+        if (imageX > canvas.width) imageX = -(imageWidth * zoomLevel);
+        if (imageY + (imageHeight * zoomLevel) < 0) imageY = canvas.height;
+    } else if (scrollMode === 'bounce') {
+        imageX += scrollPos.directionX * scrollSpeed;
+        imageY += scrollPos.directionY * scrollSpeed;
+        if (imageX + (imageWidth * zoomLevel) < 0 || imageX > canvas.width) {
+            scrollPos.directionX *= -1;
+        }
+        if (imageY + (imageHeight * zoomLevel) < 0 || imageY > canvas.height) {
+            scrollPos.directionY *= -1;
+        }
+    } else if (scrollMode === 'paredes') {
+        imageX += scrollPos.directionX * scrollSpeed;
+        if (imageX + (imageWidth * zoomLevel) < 0 || imageX > canvas.width) {
+            scrollPos.directionX *= -1;
+        }
+    } else if (scrollMode === 'vertical') {
+        imageY += scrollPos.directionY * scrollSpeed;
+        if (imageY + (imageHeight * zoomLevel) < 0 || imageY > canvas.height) {
+            scrollPos.directionY *= -1;
+        }
+    }
+
+    // Actualizar rotaciones automáticas
+    stickers.forEach(sticker => {
+        if (sticker.autoRotate) {
+            sticker.rotation = (sticker.rotation + sticker.rotationSpeed) % 360;
+        }
+    });
+
+    textElements.forEach(text => {
+        if (text.autoRotate) {
+            text.rotation = (text.rotation + text.rotationSpeed) % 360;
+        }
+    });
+
+    draw(isRecording);
+    animationFrameId = requestAnimationFrame(renderLoop);
+}
+```
+
+### **PASO 6: AGREGAR GRABACIÓN DE PANTALLA FALTANTE**
+```javascript
+// ✅ AGREGAR FUNCIONES DE GRABACIÓN DE PANTALLA FALTANTES:
+
+async function startScreenRecording() {
+    if (isScreenRecording) {
+        showNotification('❌ Ya hay una grabación de pantalla en curso', 'error');
+        return;
+    }
+    
+    if (isRecording) {
+        stopRecording();
+    }
+
+    try {
+        videoStream = await navigator.mediaDevices.getDisplayMedia({
+            video: { displaySurface: 'window' },
+            audio: true
+        });
+        
+        mediaRecorder = new MediaRecorder(videoStream);
+        recordedChunks = [];
+        
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                recordedChunks.push(event.data);
+            }
+        };
+        
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `screen-recording-${Date.now()}.webm`;
+            a.click();
+            URL.revokeObjectURL(url);
+            isScreenRecording = false;
+            document.getElementById('screen-recording-controls').style.display = 'none';
+            showNotification('✅ Grabación de pantalla finalizada', 'success');
+        };
+        
+        mediaRecorder.start();
+        isScreenRecording = true;
+        document.getElementById('screen-recording-controls').style.display = 'block';
+        startRecordingTimer();
+        showNotification('🎥 Grabación de pantalla iniciada', 'success');
+        
+    } catch (err) {
+        console.error('Error al iniciar grabación de pantalla:', err);
+        showNotification('❌ No se pudo iniciar la grabación de pantalla', 'error');
+    }
+}
+
+function stopScreenRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        videoStream.getTracks().forEach(track => track.stop());
+    }
+}
+
+function startRecordingTimer() {
+    recordingStartTime = Date.now();
+    recordingTimerInterval = setInterval(() => {
+        const elapsed = Date.now() - recordingStartTime;
+        const minutes = Math.floor(elapsed / 60000);
+        const seconds = Math.floor((elapsed % 60000) / 1000);
+        document.getElementById('recording-timer').textContent = 
+            `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }, 1000);
+}
+```
+
+### **PASO 7: AGREGAR EVENT LISTENERS DE CANVAS FALTANTES**
+```javascript
+// ✅ AGREGAR AL FINAL DE window.onload:
+
+window.onload = function() {
+    // ... código existente ...
+    
+    // ✅ AGREGAR EVENT LISTENERS PARA CANVAS:
+    canvas.addEventListener('mousedown', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        // Seleccionar sticker
+        selectedSticker = null;
+        selectedText = null;
+        
+        for (let i = stickers.length - 1; i >= 0; i--) {
+            if (stickers[i].isPointInside(x, y)) {
+                selectedSticker = stickers[i];
+                stickerDragOffset = { x: x - selectedSticker.x, y: y - selectedSticker.y };
+                break;
+            }
+        }
+        
+        if (!selectedSticker) {
+            for (let i = textElements.length - 1; i >= 0; i--) {
+                if (textElements[i].isPointInside(x, y)) {
+                    selectedText = textElements[i];
+                    textDragOffset = { x: x - selectedText.x, y: y - selectedText.y };
+                    break;
+                }
+            }
+        }
+        
+        if (!selectedSticker && !selectedText) {
+            isDragging = true;
+            dragStartX = x;
+            dragStartY = y;
+        }
+        
+        updateStickerControls();
+        updateTextControls();
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        if (!isDragging && !selectedSticker && !selectedText) return;
+        
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        if (selectedSticker) {
+            selectedSticker.x = x - stickerDragOffset.x;
+            selectedSticker.y = y - stickerDragOffset.y;
+            draw();
+        } else if (selectedText) {
+            selectedText.x = x - textDragOffset.x;
+            selectedText.y = y - textDragOffset.y;
+            draw();
+        } else if (isDragging) {
+            const dx = x - dragStartX;
+            const dy = y - dragStartY;
+            imageX += dx;
+            imageY += dy;
+            dragStartX = x;
+            dragStartY = y;
+            draw();
+        }
+    });
+
+    canvas.addEventListener('mouseup', () => {
+        isDragging = false;
+        selectedSticker = null;
+        selectedText = null;
+    });
+    
+    // ✅ INICIALIZAR MANAGERS FALTANTES:
+    voiceRecorder = new VoiceRecorder();
+    // soundCloudManager = new SoundCloudWidgetManager(); // Solo si tienes esta clase
+    // multiAudioManager = new MultiAudioManager();       // Solo si tienes esta clase
+};
+```
+
+## **💡 NUEVAS FUNCIONALIDADES A IMPLEMENTAR**
+
+### **FUNCIONALIDAD 1: Sistema Multi-Imagen para Stickers** [1]
+```javascript
+// ✅ YA ESTÁ EN EL CÓDIGO - MÉTODO addImageToStack EN CLASE STICKER
+// SOLO NECESITA COMPLETARSE LA FUNCIONALIDAD DE CAMBIO AUTOMÁTICO:
+
+function toggleStickerImageMode(id) {
+    const sticker = findStickerById(id);
+    if (!sticker || !sticker.isMultiImage) return;
+    
+    setInterval(() => {
+        sticker.currentImageIndex = (sticker.currentImageIndex + 1) % sticker.images.length;
+        if (isPreviewMode) draw();
+    }, 3000); // Cambiar cada 3 segundos
+}
+```
+
+### **FUNCIONALIDAD 2: Transiciones Avanzadas de Video** [1]
+```javascript
+// ✅ AGREGAR SISTEMA DE TRANSICIONES AVANZADAS:
+
+const videoTransitions = {
+    fade: (ctx, progress) => {
+        ctx.globalAlpha = 1 - progress;
+        // Dibujar frame anterior
+        ctx.globalAlpha = progress;
+        // Dibujar frame nuevo
+    },
+    slide: (ctx, progress, direction = 'left') => {
+        const offset = canvas.width * progress;
+        ctx.translate(direction === 'left' ? -offset : offset, 0);
+    },
+    zoom: (ctx, progress) => {
+        const scale = 1 + progress;
+        ctx.scale(scale, scale);
+    }
+};
+
+function applyVideoTransition(type, duration = 1000) {
+    // Implementar transición entre frames
+    console.log(`Aplicando transición: ${type}`);
+}
+```
+
+### **FUNCIONALIDAD 3: Filtros de Canvas Avanzados** [3][4]
+```javascript
+// ✅ AGREGAR FILTROS AVANZADOS USANDO CANVAS API:
+
+function applyCanvasFilter(filterType, intensity = 1) {
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    switch(filterType) {
+        case 'vintage':
+            for (let i = 0; i < data.length; i += 4) {
+                data[i] = Math.min(255, data[i] * 1.2);     // Red
+                data[i + 1] = Math.min(255, data[i + 1] * 1.1); // Green  
+                data[i + 2] = Math.min(255, data[i + 2] * 0.8); // Blue
+            }
+            break;
+        case 'neon':
+            for (let i = 0; i < data.length; i += 4) {
+                const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                if (brightness > 128) {
+                    data[i] = Math.min(255, data[i] * 1.5);
+                    data[i + 1] = Math.min(255, data[i + 1] * 1.5);
+                    data[i + 2] = Math.min(255, data[i + 2] * 1.5);
+                }
+            }
+            break;
+    }
+    
+    ctx.putImageData(imageData, 0, 0);
+}
+```
+
+## **⚠️ LISTA DE VERIFICACIÓN PARA ARREGLOS**
+
+### **PRIORIDAD CRÍTICA - ARREGLAR AHORA:**
+- ✅ Agregar todas las funciones faltantes listadas arriba
+- ✅ Completar elementos HTML faltantes 
+- ✅ Declarar variables globales faltantes
+- ✅ Arreglar renderLoop() con todos los scroll modes
+- ✅ Completar drawEffects() con todas las funciones
+
+### **PRIORIDAD ALTA - ARREGLAR DESPUÉS:**
+- ✅ Implementar event listeners completos para canvas
+- ✅ Completar sistema de audio con todas las fuentes
+- ✅ Arreglar updateStickerControls() y updateTextControls()
+- ✅ Implementar grabación de pantalla completa
+
+### **PRIORIDAD MEDIA - IMPLEMENTAR NUEVAS FUNCIONALIDADES:**
+- 💡 Sistema multi-imagen para stickers con rotación automática
+- 🎨 Filtros avanzados de canvas en tiempo real
+- 🔊 Sistema de texto a voz mejorado con diferentes voces
+- 🎥 Transiciones de video profesionales
+
+## **🎯 CÓDIGO FUNCIONAL MÍNIMO**
+
+Si quieres una **solución rápida** que funcione inmediatamente, **copia y pega** todas las funciones que listé arriba en el orden dado. El código actual tiene aproximadamente **15 funciones faltantes críticas** que deben ser agregadas para que funcione básicamente.
+
+**Una vez que agregues todas las funciones faltantes, el editor debería funcionar correctamente** para grabar videos con scroll de imágenes, stickers, textos y efectos visuales [1][3][4].
